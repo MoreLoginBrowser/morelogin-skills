@@ -4,6 +4,36 @@ Use this guide when preparing, installing, updating, or verifying MoreLogin Clie
 
 The agent may download files, reveal or open installers, set executable permission on downloaded CLI binaries, and verify installation. It must not accept Terms of Services, EULA, UAC, Gatekeeper, administrator prompts, sudo prompts, privacy permissions, firewall prompts, or other security/user confirmations on behalf of the user.
 
+## Agent Entry Flow
+
+First detect the operating system and CPU architecture, then run the matching official bootstrap command.
+
+Windows x64 PowerShell:
+
+```powershell
+irm https://releases.morelogin.com/client/prod/install.ps1 | iex
+```
+
+macOS or Linux:
+
+```bash
+curl -fsSL https://releases.morelogin.com/client/prod/install.sh | bash
+```
+
+On Windows, run the PowerShell command directly. Do not replace `Invoke-RestMethod` (`irm`) with `curl.exe`; Codex and other sandboxed agents may run `curl.exe` under a different Windows Schannel or credential context from the user's interactive PowerShell session.
+
+Keep the command running while large files download. Use a long-running command session and continue polling until the bootstrap finishes or reaches a prompt that requires the user. Do not report installation as complete merely because `ml-cli` was installed; verify MoreLogin Client separately.
+
+If the agent sandbox blocks external network access, localhost access, file downloads, or GUI application launch, request the required permission and retry the same platform command. Do not silently substitute a different downloader or repeatedly restart the installation.
+
+Platform handoff rules:
+
+- Windows: reveal or open the downloaded Client installer. If it cannot be opened, show its exact path and ask the user to double-click it.
+- macOS: open or reveal the downloaded installer. If the installer window is not visible, show its exact path and ask the user to open it in Finder.
+- Linux: show the downloaded package path and the required installation command. Do not run `sudo` or perform a system-wide installation without explicit user approval.
+
+Do not accept UAC, sudo, Terms of Service, EULA, Gatekeeper, administrator, firewall, privacy, login, CAPTCHA, or verification-code prompts on the user's behalf.
+
 ## Install Source
 
 The bootstrap scripts are published by MoreLogin at the release URLs below. The website can expose short install commands such as:
@@ -108,8 +138,6 @@ Prefer a user-visible location:
 If Downloads is unavailable, use the current workspace and tell the user the exact path.
 
 Do not overwrite an existing file silently. If the file exists, either reuse it after confirming it matches the expected file, or download with a unique suffix.
-
-If checksum metadata is unavailable, say that SHA256 verification cannot be performed.
 
 ## CLI Presence And Update Check
 

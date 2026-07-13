@@ -32,8 +32,10 @@ skills/
 The official website should provide a short copy-to-agent prompt that points to the setup guide:
 
 ```text
-请根据 MoreLogin setup 指引安装、配置并验证 MoreLogin：
-https://github.com/MoreLoginBrowser/morelogin-skills/tree/main/skills/morelogin-setup/install.md
+Please follow this guide to install, configure, and verify MoreLogin with ml-cli:
+https://github.com/MoreLoginBrowser/morelogin-skills/blob/main/skills/morelogin-setup/install.md
+
+If I do not have a MoreLogin account, open https://www.morelogin.com/register and ask me to register and sign in manually. Do not submit registration forms or handle verification codes without my confirmation.
 ```
 
 ## Example Natural Language Tasks
