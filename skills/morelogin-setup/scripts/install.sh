@@ -287,6 +287,7 @@ if [ "$cli_ready" = "0" ]; then
   echo "$cli_download_url"
   curl -fS --proto '=https' --max-redirs 0 "$cli_download_url" -o "$tmp_path"
   chmod +x "$tmp_path"
+  "$tmp_path" --version
   mv "$tmp_path" "$BIN_PATH"
 
   echo "Installed ml-cli to $BIN_PATH"
@@ -328,6 +329,109 @@ client_installed() {
   esac
 }
 
+remote_file_size() {
+  local url="$1"
+  local headers
+  local size
+
+  if ! headers="$(curl -fsSI --proto '=https' --max-redirs 0 "$url" 2>/dev/null)"; then
+    return 1
+  fi
+  size="$(printf '%s\n' "$headers" | awk '
+    tolower($1) == "content-length:" {
+      gsub("\r", "", $2)
+      value = $2
+    }
+    END {
+      if (value ~ /^[0-9]+$/) print value
+    }
+  ')"
+  case "$size" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s' "$size"
+}
+
+client_installer_format_valid() {
+  local path="$1"
+  local package_name="${2:-$1}"
+  local magic
+
+  case "$(uname -s):$package_name" in
+    Darwin:*.dmg)
+      hdiutil verify "$path" >/dev/null 2>&1
+      ;;
+    Darwin:*.pkg)
+      pkgutil --check-signature "$path" >/dev/null 2>&1
+      ;;
+    Linux:*.deb)
+      command -v dpkg-deb >/dev/null 2>&1 && dpkg-deb --info "$path" >/dev/null 2>&1
+      ;;
+    Linux:*.rpm)
+      command -v rpm >/dev/null 2>&1 && rpm -K "$path" >/dev/null 2>&1
+      ;;
+    Linux:*.AppImage|Linux:*.appimage)
+      magic="$(od -An -tx1 -N4 "$path" 2>/dev/null | tr -d '[:space:]')"
+      [ "$magic" = "7f454c46" ]
+      ;;
+    Linux:*.tar.gz|Linux:*.tgz)
+      tar -tzf "$path" >/dev/null 2>&1
+      ;;
+    Linux:*.zip)
+      command -v unzip >/dev/null 2>&1 && unzip -tqq "$path" >/dev/null 2>&1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+client_installer_reusable() {
+  local path="$1"
+  local url="$2"
+  local package_name="${3:-$1}"
+  local local_size
+  local expected_size
+
+  [ -f "$path" ] && [ -s "$path" ] || return 1
+  local_size="$(wc -c < "$path" | tr -d '[:space:]')"
+  if expected_size="$(remote_file_size "$url")"; then
+    [ "$local_size" = "$expected_size" ] || return 1
+  fi
+  client_installer_format_valid "$path" "$package_name"
+}
+
+preserve_invalid_file() {
+  local path="$1"
+  local preserved_path
+
+  [ -e "$path" ] || return 0
+  preserved_path="$path.invalid-$(date +%Y%m%d%H%M%S)"
+  mv "$path" "$preserved_path"
+  echo "Preserved an incomplete or invalid file at $preserved_path" >&2
+}
+
+download_with_resume() {
+  local url="$1"
+  local path="$2"
+  local curl_status
+
+  if [ -s "$path" ]; then
+    if curl -fS --retry 3 --retry-delay 2 --continue-at - --proto '=https' --max-redirs 0 "$url" -o "$path"; then
+      return 0
+    else
+      curl_status=$?
+    fi
+    if [ "$curl_status" -ne 33 ]; then
+      return "$curl_status"
+    fi
+    echo "The server does not support resuming this partial download. Restarting it." >&2
+    preserve_invalid_file "$path"
+  fi
+
+  curl -fS --retry 3 --retry-delay 2 --proto '=https' --max-redirs 0 "$url" -o "$path"
+}
+
 download_client_installer() {
   if client_installed; then
     echo "MoreLogin Client appears to be installed. Skipping Client installer download."
@@ -343,19 +447,52 @@ download_client_installer() {
   filename="${client_url##*/}"
   client_path="$download_dir/$filename"
 
-  if [ -e "$client_path" ]; then
-    client_path="$download_dir/${filename%.*}-$(date +%Y%m%d%H%M%S).${filename##*.}"
-  fi
+  if client_installer_reusable "$client_path" "$client_url"; then
+    echo "Found the latest MoreLogin Client installer in the download directory:"
+    echo "$client_path"
+    echo "The existing installer is valid. Skipping download."
+  else
+    preserve_invalid_file "$client_path"
+    partial_path="$client_path.part"
 
-  echo "Downloading MoreLogin Client installer from:"
-  echo "$client_url"
-  curl -fS --proto '=https' --max-redirs 0 "$client_url" -o "$client_path"
-  echo "Downloaded MoreLogin Client installer to $client_path"
+    if client_installer_reusable "$partial_path" "$client_url" "$filename"; then
+      echo "Found a complete validated partial download. Finishing it without downloading again:"
+      echo "$partial_path"
+    else
+      expected_size="$(remote_file_size "$client_url" || true)"
+      if [ -n "$expected_size" ] && [ -f "$partial_path" ]; then
+        actual_size="$(wc -c < "$partial_path" | tr -d '[:space:]')"
+        if [ "$actual_size" -ge "$expected_size" ]; then
+          preserve_invalid_file "$partial_path"
+        fi
+      fi
+      echo "Downloading MoreLogin Client installer from:"
+      echo "$client_url"
+      download_with_resume "$client_url" "$partial_path"
+    fi
+    if ! client_installer_format_valid "$partial_path" "$filename"; then
+      echo "Downloaded MoreLogin Client installer failed package validation: $partial_path" >&2
+      return 2
+    fi
+    expected_size="$(remote_file_size "$client_url" || true)"
+    if [ -n "$expected_size" ]; then
+      actual_size="$(wc -c < "$partial_path" | tr -d '[:space:]')"
+      if [ "$actual_size" != "$expected_size" ]; then
+        echo "Downloaded MoreLogin Client installer size does not match the release: $partial_path" >&2
+        return 2
+      fi
+    fi
+    mv "$partial_path" "$client_path"
+    echo "Downloaded MoreLogin Client installer to $client_path"
+  fi
 
   case "$(uname -s)" in
     Darwin)
-      open "$client_path" || true
-      open -R "$client_path" || true
+      if ! open "$client_path"; then
+        echo "Could not open the installer automatically. Revealing it in Finder:"
+        echo "$client_path"
+        open -R "$client_path" || true
+      fi
       echo "If an installer, Gatekeeper, privacy, or network prompt appears, confirm it manually."
       ;;
     Linux)

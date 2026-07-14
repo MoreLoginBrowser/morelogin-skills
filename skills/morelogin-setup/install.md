@@ -11,16 +11,23 @@ First detect the operating system and CPU architecture, then run the matching of
 Windows x64 PowerShell:
 
 ```powershell
-irm https://releases.morelogin.com/client/prod/install.ps1 | iex
+irm https://releases.morelogin.com/client/prod/install_1.0.ps1 | iex
 ```
 
 macOS or Linux:
 
 ```bash
-curl -fsSL https://releases.morelogin.com/client/prod/install.sh | bash
+curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash
 ```
 
 On Windows, run the PowerShell command directly. Do not replace `Invoke-RestMethod` (`irm`) with `curl.exe`; Codex and other sandboxed agents may run `curl.exe` under a different Windows Schannel or credential context from the user's interactive PowerShell session.
+
+If the Windows agent cannot execute the PowerShell bootstrap after requesting the required permission, use the official x64 direct-download fallback instead of asking the user to copy the same command repeatedly:
+
+- Client: `https://cb-gateway.morelogin.com/app/ver/public/latest/redirect?identify=MoreLogin_AirDrop_window_x64`
+- CLI: `https://cb-gateway.morelogin.com/app/ver/public/latest/redirect?identify=MoreLogin_AirDrop_window_x64_cli`
+
+Download only the missing components without changing their contents. Open the Client installer and leave UAC, EULA, and installer confirmation to the user. If the Client installer provides `ml-cli`, verify that copy before downloading the separate CLI. Otherwise, save the CLI as `%USERPROFILE%\.morelogin\bin\ml-cli.exe`, add that directory to the current user's PATH when permitted, and verify the CLI first by its absolute path. A download URL does not automatically authorize or launch an executable; request GUI-launch permission when the agent environment requires it.
 
 Keep the command running while large files download. Use a long-running command session and continue polling until the bootstrap finishes or reaches a prompt that requires the user. Do not report installation as complete merely because `ml-cli` was installed; verify MoreLogin Client separately.
 
@@ -39,11 +46,11 @@ Do not accept UAC, sudo, Terms of Service, EULA, Gatekeeper, administrator, fire
 The bootstrap scripts are published by MoreLogin at the release URLs below. The website can expose short install commands such as:
 
 ```bash
-curl -fsSL https://releases.morelogin.com/client/prod/install.sh | bash
+curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash
 ```
 
 ```powershell
-irm https://releases.morelogin.com/client/prod/install.ps1 | iex
+irm https://releases.morelogin.com/client/prod/install_1.0.ps1 | iex
 ```
 
 By default, the scripts install or update `ml-cli`, then check whether MoreLogin Client is installed. If the Client is already installed, they skip its download and do not externally update it. If it is missing, they resolve the latest Client package, download it, and open or reveal the installer where possible.
@@ -51,11 +58,11 @@ By default, the scripts install or update `ml-cli`, then check whether MoreLogin
 For CLI-only installation or automated script testing, skip the Client check explicitly:
 
 ```bash
-curl -fsSL https://releases.morelogin.com/client/prod/install.sh | MORELOGIN_SKIP_CLIENT=1 bash
+curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | MORELOGIN_SKIP_CLIENT=1 bash
 ```
 
 ```powershell
-$env:MORELOGIN_SKIP_CLIENT="1"; irm https://releases.morelogin.com/client/prod/install.ps1 | iex
+$env:MORELOGIN_SKIP_CLIENT="1"; irm https://releases.morelogin.com/client/prod/install_1.0.ps1 | iex
 ```
 
 During the default flow, the script stops at any installer, Terms of Services, EULA, Gatekeeper, UAC, administrator, privacy, or firewall prompt for the user to confirm manually.
@@ -122,7 +129,7 @@ Use `data` as the download URL only after all validation below succeeds:
 - Reject custom ports, user information in URLs, IP addresses, localhost, non-HTTPS URLs, unexpected hosts, and mismatched platform artifacts.
 - Do not follow redirects while resolving the API or downloading artifacts. A redirect could leave the validated host; stop and report it instead.
 
-The published `install.sh` and `install.ps1` enforce these checks before writing or opening a downloaded artifact.
+The published `install_1.0.sh` and `install_1.0.ps1` enforce these checks before writing or opening a downloaded artifact.
 They also print the platform `identify`, release API request URL, complete JSON response, and validated download URL so version-resolution problems can be diagnosed from installer output.
 
 Do not use this API to force-update an already installed MoreLogin Client. If the Client is already installed, skip external Client package download and tell the user they can update it from inside the MoreLogin Client.
@@ -138,6 +145,13 @@ Prefer a user-visible location:
 If Downloads is unavailable, use the current workspace and tell the user the exact path.
 
 Do not overwrite an existing file silently. If the file exists, either reuse it after confirming it matches the expected file, or download with a unique suffix.
+
+The bootstrap scripts may reuse an existing installer only after confirming it matches the latest validated release URL and is usable:
+
+- Windows requires the exact latest filename, a non-empty file, a valid Authenticode signature, and version metadata that identifies MoreLogin. Pin the official signer Subject or certificate thumbprint before release when the release team provides the authoritative allowlist; do not guess signing identities.
+- macOS and Linux require the exact latest filename, a non-empty file, a successful platform-native package or archive validation, and a matching remote size when the server provides one.
+
+When these checks pass, skip the Client download and use the existing installer. Otherwise, preserve the existing file with an `.invalid-<timestamp>` suffix, download to a `.part` file, validate the completed download, and atomically move it to the expected latest filename. An interrupted `.part` download may be resumed, but it must never be opened as an installer.
 
 ## CLI Presence And Update Check
 
@@ -306,9 +320,9 @@ Resolve and download the Client installer for the current platform, then handle 
 
 Expected installer is usually `.dmg`.
 
-1. Download the DMG.
+1. Download the DMG, or reuse the latest validated local copy.
 2. Run `open <dmg-path>` to try opening the installer.
-3. Run `open -R <dmg-path>` to reveal it in Finder.
+3. Run `open -R <dmg-path>` only if opening the installer fails and it needs to be revealed in Finder. Do not run both commands unconditionally.
 4. Check whether a MoreLogin volume appears under `/Volumes`.
 5. If the DMG does not mount or the user cannot see the window, give the exact DMG path and tell the user to double-click it in Finder.
 6. Do not run `hdiutil attach -agree`.
@@ -323,7 +337,7 @@ After the user completes installation:
 
 Expected installer is usually `.exe` or `.msi`.
 
-1. Download the installer.
+1. Download the installer, or reuse the latest validated local copy. When the bootstrap script cannot run, use the official Client direct-download URL from Agent Entry Flow.
 2. Reveal it in Explorer:
 
 ```powershell
@@ -338,6 +352,8 @@ Start-Process "<installer-path>"
 
 4. If UAC, EULA, installer wizard, firewall, or privacy prompts appear, stop and tell the user to confirm manually.
 5. Do not pass silent install flags unless official MoreLogin documentation explicitly provides them and the user asks for unattended installation.
+
+If revealing the installer in Explorer fails, still try to launch the installer. Explorer reveal is a convenience and must not block `Start-Process`.
 
 After the user completes installation:
 

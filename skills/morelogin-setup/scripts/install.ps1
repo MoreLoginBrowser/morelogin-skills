@@ -197,6 +197,121 @@ function Test-MoreLoginClientInstalled {
   return $false
 }
 
+function Test-ReusableMoreLoginClientInstaller {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return $false
+  }
+
+  $Installer = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
+  if (-not $Installer -or $Installer.Length -le 0) {
+    return $false
+  }
+
+  try {
+    $Signature = Get-AuthenticodeSignature -LiteralPath $Path -ErrorAction Stop
+  } catch {
+    return $false
+  }
+  if ($Signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+    return $false
+  }
+
+  $VersionInfo = $Installer.VersionInfo
+  $ProductMetadata = @(
+    $VersionInfo.CompanyName,
+    $VersionInfo.ProductName,
+    $VersionInfo.FileDescription
+  ) -join " "
+  return $ProductMetadata.IndexOf("MoreLogin", [StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
+function Move-AsideInvalidFile {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return
+  }
+
+  $PreservedPath = "$Path.invalid-$(Get-Date -Format yyyyMMddHHmmssfff)"
+  Move-Item -LiteralPath $Path -Destination $PreservedPath
+  Write-Warning "Preserved an incomplete or invalid file at $PreservedPath"
+}
+
+function Save-WebFileWithResume {
+  param(
+    [Parameter(Mandatory = $true)][string]$Url,
+    [Parameter(Mandatory = $true)][string]$Path
+  )
+
+  for ($Attempt = 0; $Attempt -lt 2; $Attempt++) {
+    $ExistingLength = if (Test-Path -LiteralPath $Path -PathType Leaf) {
+      (Get-Item -LiteralPath $Path).Length
+    } else {
+      0
+    }
+
+    $Request = [System.Net.HttpWebRequest]::Create($Url)
+    $Request.Method = "GET"
+    $Request.AllowAutoRedirect = $false
+    if ($ExistingLength -gt 0) {
+      $Request.AddRange($ExistingLength)
+      Write-Host "Resuming Client download at byte $ExistingLength."
+    }
+
+    $Response = $null
+    try {
+      $Response = [System.Net.HttpWebResponse]$Request.GetResponse()
+    } catch [System.Net.WebException] {
+      $ErrorResponse = $_.Exception.Response
+      $StatusCode = if ($ErrorResponse) { [int]$ErrorResponse.StatusCode } else { 0 }
+      if ($ErrorResponse) {
+        $ErrorResponse.Close()
+      }
+      if ($ExistingLength -gt 0 -and $StatusCode -eq 416 -and $Attempt -eq 0) {
+        Move-AsideInvalidFile -Path $Path
+        Write-Warning "The server rejected the saved partial range. Restarting the download."
+        continue
+      }
+      throw
+    }
+
+    try {
+      $StatusCode = [int]$Response.StatusCode
+      if ($StatusCode -notin @(200, 206)) {
+        throw "Unexpected HTTP status $StatusCode while downloading $Url"
+      }
+
+      $Append = $ExistingLength -gt 0 -and $StatusCode -eq 206
+      if ($Append) {
+        $ContentRange = [string]$Response.Headers["Content-Range"]
+        if (-not $ContentRange.StartsWith("bytes $ExistingLength-", [StringComparison]::OrdinalIgnoreCase)) {
+          throw "The server returned an unexpected Content-Range while resuming: $ContentRange"
+        }
+      }
+
+      $FileMode = if ($Append) { [System.IO.FileMode]::Append } else { [System.IO.FileMode]::Create }
+      $InputStream = $Response.GetResponseStream()
+      $OutputStream = New-Object System.IO.FileStream($Path, $FileMode, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+      try {
+        $Buffer = New-Object byte[] (1024 * 1024)
+        while (($BytesRead = $InputStream.Read($Buffer, 0, $Buffer.Length)) -gt 0) {
+          $OutputStream.Write($Buffer, 0, $BytesRead)
+        }
+      } finally {
+        $OutputStream.Dispose()
+        $InputStream.Dispose()
+      }
+      return
+    } finally {
+      $Response.Close()
+    }
+  }
+
+  throw "Could not download $Url"
+}
+
 function Save-MoreLoginClientInstaller {
   if (Test-MoreLoginClientInstalled) {
     Write-Host "MoreLogin Client appears to be installed. Skipping Client installer download."
@@ -209,19 +324,42 @@ function Save-MoreLoginClientInstaller {
   New-Item -ItemType Directory -Force -Path $DownloadDir | Out-Null
   $FileName = Split-Path -Leaf ([Uri]$DownloadUrl).AbsolutePath
   $ClientPath = Join-Path $DownloadDir $FileName
-  if (Test-Path $ClientPath) {
-    $Base = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
-    $Ext = [System.IO.Path]::GetExtension($FileName)
-    $ClientPath = Join-Path $DownloadDir "$Base-$(Get-Date -Format yyyyMMddHHmmss)$Ext"
+
+  $ReuseInstaller = Test-ReusableMoreLoginClientInstaller -Path $ClientPath
+  if ($ReuseInstaller) {
+    Write-Host "Found the latest MoreLogin Client installer in the download directory:"
+    Write-Host $ClientPath
+    Write-Host "The existing installer is valid. Skipping download."
+  } else {
+    Move-AsideInvalidFile -Path $ClientPath
+    $PartialPath = "$ClientPath.part"
+
+    if (Test-ReusableMoreLoginClientInstaller -Path $PartialPath) {
+      Write-Host "Found a complete validated partial download. Finishing it without downloading again:"
+      Write-Host $PartialPath
+    } else {
+      Write-Host "Downloading MoreLogin Client installer from:"
+      Write-Host $DownloadUrl
+      Save-WebFileWithResume -Url $DownloadUrl -Path $PartialPath
+    }
+    if (-not (Test-ReusableMoreLoginClientInstaller -Path $PartialPath)) {
+      throw "Downloaded MoreLogin Client installer failed Authenticode or product validation: $PartialPath"
+    }
+    Move-Item -LiteralPath $PartialPath -Destination $ClientPath
+    Write-Host "Downloaded MoreLogin Client installer to $ClientPath"
   }
 
-  Write-Host "Downloading MoreLogin Client installer from:"
-  Write-Host $DownloadUrl
-  Invoke-WebRequest -Uri $DownloadUrl -OutFile $ClientPath -MaximumRedirection 0
-  Write-Host "Downloaded MoreLogin Client installer to $ClientPath"
-  Start-Process "explorer.exe" -ArgumentList "/select,`"$ClientPath`""
-  Start-Process $ClientPath
-  Write-Host "If UAC, EULA, firewall, privacy, or installer prompts appear, confirm them manually."
+  try {
+    Start-Process "explorer.exe" -ArgumentList "/select,`"$ClientPath`"" -ErrorAction Stop
+  } catch {
+    Write-Warning "Could not reveal the installer in Explorer. Continuing with installer launch. $($_.Exception.Message)"
+  }
+  try {
+    Start-Process $ClientPath -ErrorAction Stop
+    Write-Host "If UAC, EULA, firewall, privacy, or installer prompts appear, confirm them manually."
+  } catch {
+    Write-Warning "Could not launch the MoreLogin Client installer automatically. Open it manually: $ClientPath. $($_.Exception.Message)"
+  }
 }
 
 Assert-TrustedApiUrl
@@ -258,11 +396,15 @@ if (-not $CliReady) {
   $DownloadUrl = $LatestCliDownloadUrl
 
   New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-  $TmpPath = "$BinPath.tmp"
+  $TmpPath = Join-Path $InstallDir "ml-cli.download.exe"
 
   Write-Host "Downloading ml-cli from:"
   Write-Host $DownloadUrl
   Invoke-WebRequest -Uri $DownloadUrl -OutFile $TmpPath -MaximumRedirection 0
+  $DownloadedCliVersion = Get-InstalledCliVersion -Path $TmpPath
+  if (-not $DownloadedCliVersion) {
+    throw "Downloaded ml-cli could not be executed or did not report a valid version: $TmpPath"
+  }
   Move-Item -Force $TmpPath $BinPath
 
   $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")

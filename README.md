@@ -87,9 +87,9 @@ Industry skills are responsible for:
 
 Before publishing the install commands on the website:
 
-- Use the published `https://releases.morelogin.com/client/prod/install.sh` for macOS/Linux.
-- Use the published `https://releases.morelogin.com/client/prod/install.ps1` for Windows.
-- Verify `curl -fsSL https://releases.morelogin.com/client/prod/install.sh | bash` on macOS and Ubuntu.
-- Verify `irm https://releases.morelogin.com/client/prod/install.ps1 | iex` on Windows PowerShell.
+- Use the published `https://releases.morelogin.com/client/prod/install_1.0.sh` for macOS/Linux.
+- Use the published `https://releases.morelogin.com/client/prod/install_1.0.ps1` for Windows.
+- Verify `curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash` on macOS and Ubuntu.
+- Verify `irm https://releases.morelogin.com/client/prod/install_1.0.ps1 | iex` on Windows PowerShell.
 - Verify the published scripts from their release URLs before each script release.
 - Keep MoreLogin Client updates inside the Client. The bootstrap scripts install or update `ml-cli`, skip an already installed Client, and download the Client installer only when the Client is missing. Use `MORELOGIN_SKIP_CLIENT=1` only for CLI-only installation or testing.
