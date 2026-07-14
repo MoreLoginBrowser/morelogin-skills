@@ -11,7 +11,7 @@ First detect the operating system and CPU architecture, then run the matching of
 Windows x64 PowerShell:
 
 ```powershell
-irm https://releases.morelogin.com/client/prod/install_1.0.ps1 | iex
+irm https://releases.morelogin.com/client/prod/install_1.1.ps1 | iex
 ```
 
 macOS or Linux:
@@ -50,7 +50,7 @@ curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash
 ```
 
 ```powershell
-irm https://releases.morelogin.com/client/prod/install_1.0.ps1 | iex
+irm https://releases.morelogin.com/client/prod/install_1.1.ps1 | iex
 ```
 
 By default, the scripts install or update `ml-cli`, then check whether MoreLogin Client is installed. If the Client is already installed, they skip its download and do not externally update it. If it is missing, they resolve the latest Client package, download it, and open or reveal the installer where possible.
@@ -62,7 +62,7 @@ curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | MORELOGIN
 ```
 
 ```powershell
-$env:MORELOGIN_SKIP_CLIENT="1"; irm https://releases.morelogin.com/client/prod/install_1.0.ps1 | iex
+$env:MORELOGIN_SKIP_CLIENT="1"; irm https://releases.morelogin.com/client/prod/install_1.1.ps1 | iex
 ```
 
 During the default flow, the script stops at any installer, Terms of Services, EULA, Gatekeeper, UAC, administrator, privacy, or firewall prompt for the user to confirm manually.
@@ -129,7 +129,7 @@ Use `data` as the download URL only after all validation below succeeds:
 - Reject custom ports, user information in URLs, IP addresses, localhost, non-HTTPS URLs, unexpected hosts, and mismatched platform artifacts.
 - Do not follow redirects while resolving the API or downloading artifacts. A redirect could leave the validated host; stop and report it instead.
 
-The published `install_1.0.sh` and `install_1.0.ps1` enforce these checks before writing or opening a downloaded artifact.
+The published `install_1.0.sh` and `install_1.1.ps1` enforce these checks before writing or opening a downloaded artifact.
 They also print the platform `identify`, release API request URL, complete JSON response, and validated download URL so version-resolution problems can be diagnosed from installer output.
 
 Do not use this API to force-update an already installed MoreLogin Client. If the Client is already installed, skip external Client package download and tell the user they can update it from inside the MoreLogin Client.
@@ -338,22 +338,24 @@ After the user completes installation:
 Expected installer is usually `.exe` or `.msi`.
 
 1. Download the installer, or reuse the latest validated local copy. When the bootstrap script cannot run, use the official Client direct-download URL from Agent Entry Flow.
-2. Reveal it in Explorer:
+2. Request an elevated interactive launch and retain the process object:
+
+```powershell
+Start-Process -FilePath "<installer-path>" -Verb RunAs -PassThru
+```
+
+3. Wait briefly and check whether that process is still running with a nonzero `MainWindowHandle`. Do not report that the installer window opened merely because `Start-Process` returned without an error.
+4. If a visible window cannot be confirmed, reveal the installer in Explorer:
 
 ```powershell
 explorer.exe /select,"<installer-path>"
 ```
 
-3. Open installer only if appropriate:
+5. Print the exact installer path and tell the user to double-click it only when no installer or UAC window is visible. Do not launch a second copy when a window is already visible.
+6. If UAC, EULA, installer wizard, firewall, or privacy prompts appear, stop and tell the user to confirm manually.
+7. Do not pass silent install flags unless official MoreLogin documentation explicitly provides them and the user asks for unattended installation.
 
-```powershell
-Start-Process "<installer-path>"
-```
-
-4. If UAC, EULA, installer wizard, firewall, or privacy prompts appear, stop and tell the user to confirm manually.
-5. Do not pass silent install flags unless official MoreLogin documentation explicitly provides them and the user asks for unattended installation.
-
-If revealing the installer in Explorer fails, still try to launch the installer. Explorer reveal is a convenience and must not block `Start-Process`.
+`Start-Process` success confirms only that Windows accepted the launch request. It does not prove that the window is visible in the user's desktop session. If the agent cannot access the interactive desktop, manual double-click is the required handoff.
 
 After the user completes installation:
 

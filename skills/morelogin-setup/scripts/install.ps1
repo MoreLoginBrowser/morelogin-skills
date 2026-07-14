@@ -312,6 +312,61 @@ function Save-WebFileWithResume {
   throw "Could not download $Url"
 }
 
+function Show-MoreLoginInstallerInExplorer {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  try {
+    Start-Process "explorer.exe" -ArgumentList "/select,`"$Path`"" -ErrorAction Stop
+    Write-Host "Selected the MoreLogin Client installer in Explorer:"
+    Write-Host $Path
+  } catch {
+    Write-Warning "Could not reveal the installer in Explorer. Open it manually: $Path. $($_.Exception.Message)"
+  }
+}
+
+function Start-MoreLoginClientInstaller {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $InstallerProcess = $null
+  $LaunchRequested = $false
+  $VisibleWindowConfirmed = $false
+
+  Write-Host "Requesting Windows to launch the MoreLogin Client installer with elevation:"
+  Write-Host $Path
+  try {
+    $InstallerProcess = Start-Process -FilePath $Path -Verb RunAs -PassThru -ErrorAction Stop
+    $LaunchRequested = $true
+  } catch {
+    Write-Warning "Windows did not start the installer. UAC may have been cancelled or the agent may not have access to the interactive desktop. $($_.Exception.Message)"
+  }
+
+  if ($LaunchRequested -and $InstallerProcess) {
+    Start-Sleep -Seconds 5
+    try {
+      if (-not $InstallerProcess.HasExited) {
+        $InstallerProcess.Refresh()
+        $VisibleWindowConfirmed = $InstallerProcess.MainWindowHandle -ne [IntPtr]::Zero
+      }
+    } catch {
+      Write-Warning "Could not confirm whether the installer window is visible. $($_.Exception.Message)"
+    }
+  }
+
+  if ($VisibleWindowConfirmed) {
+    Write-Host "The MoreLogin Client installer process is running with a visible window."
+    Write-Host "Confirm UAC, EULA, firewall, privacy, and installer prompts manually."
+    return
+  }
+
+  if ($LaunchRequested) {
+    Write-Warning "Windows accepted the installer launch request, but a visible installer window could not be confirmed."
+  }
+  Show-MoreLoginInstallerInExplorer -Path $Path
+  Write-Host "If the installer or UAC window is already visible, do not start it again."
+  Write-Host "If no installer window appears, double-click the selected file manually:"
+  Write-Host $Path
+}
+
 function Save-MoreLoginClientInstaller {
   if (Test-MoreLoginClientInstalled) {
     Write-Host "MoreLogin Client appears to be installed. Skipping Client installer download."
@@ -349,17 +404,7 @@ function Save-MoreLoginClientInstaller {
     Write-Host "Downloaded MoreLogin Client installer to $ClientPath"
   }
 
-  try {
-    Start-Process "explorer.exe" -ArgumentList "/select,`"$ClientPath`"" -ErrorAction Stop
-  } catch {
-    Write-Warning "Could not reveal the installer in Explorer. Continuing with installer launch. $($_.Exception.Message)"
-  }
-  try {
-    Start-Process $ClientPath -ErrorAction Stop
-    Write-Host "If UAC, EULA, firewall, privacy, or installer prompts appear, confirm them manually."
-  } catch {
-    Write-Warning "Could not launch the MoreLogin Client installer automatically. Open it manually: $ClientPath. $($_.Exception.Message)"
-  }
+  Start-MoreLoginClientInstaller -Path $ClientPath
 }
 
 Assert-TrustedApiUrl
