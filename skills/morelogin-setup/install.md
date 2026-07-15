@@ -6,13 +6,15 @@ MoreLogin Client is installed.
 
 ## Contents
 
-- [Fast path](#fast-path)
-- [Decision flow](#decision-flow)
-- [CLI update](#cli-update)
-- [Fallback downloads](#fallback-downloads)
-- [Verification](#verification)
-- [Safety boundaries](#safety-boundaries)
-- [Detailed references](#detailed-references)
+- [Install MoreLogin](#install-morelogin)
+  - [Contents](#contents)
+  - [Fast Path](#fast-path)
+  - [Decision Flow](#decision-flow)
+  - [CLI Update](#cli-update)
+  - [Fallback Downloads](#fallback-downloads)
+  - [Verification](#verification)
+  - [Safety Boundaries](#safety-boundaries)
+  - [Detailed References](#detailed-references)
 
 ## Fast Path
 
@@ -21,7 +23,7 @@ Detect OS and CPU architecture, then run the matching official bootstrap.
 Windows x64 PowerShell:
 
 ```powershell
-irm https://releases.morelogin.com/client/prod/install_1.1.ps1 | iex
+irm https://releases.morelogin.com/client/prod/install_1.2.ps1 | iex
 ```
 
 macOS or Linux:
@@ -38,7 +40,7 @@ restart the flow repeatedly.
 For CLI-only installation or automated bootstrap testing:
 
 ```powershell
-$env:MORELOGIN_SKIP_CLIENT="1"; irm https://releases.morelogin.com/client/prod/install_1.1.ps1 | iex
+$env:MORELOGIN_SKIP_CLIENT="1"; irm https://releases.morelogin.com/client/prod/install_1.2.ps1 | iex
 ```
 
 ```bash
