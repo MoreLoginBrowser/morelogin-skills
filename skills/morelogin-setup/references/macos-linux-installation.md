@@ -1,10 +1,10 @@
 # macOS And Linux Installation
 
-Use this reference only on macOS or Linux. Use the bundled bootstrap script when
-possible:
+Use this reference only on macOS or Linux. For an AI-agent setup, install or update
+only `ml-cli` first:
 
 ```bash
-curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash
+curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | MORELOGIN_SKIP_CLIENT=1 bash
 ```
 
 ## Contents
@@ -15,11 +15,27 @@ curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash
 
 ## macOS
 
-Check `/Applications/MoreLogin.app` and `~/Applications/MoreLogin.app` before
-downloading. A found app must be a usable application bundle, not merely a stale
-directory.
+Use `ml-cli client status --output-json` as the authoritative read-only check for
+`/Applications/MoreLogin.app` and `~/Applications/MoreLogin.app`. Do not reproduce
+bundle scanning, architecture checks, signing checks, or Gatekeeper checks in
+ad-hoc shell code.
 
-For a missing Client:
+If the status is `not_installed` and installation was requested, run:
+
+```bash
+ml-cli client install --interactive --output-json
+```
+
+For macOS, the CLI selects the native architecture and prepares a fresh DMG. A
+`detection_inconclusive` result is a failed check, not evidence that the Client is
+missing; stop without downloading or opening a DMG.
+
+After `user_action_required` or `launch_requested`, complete the installer and
+Gatekeeper prompts manually. The CLI does not accept licenses, remove quarantine,
+copy the App, launch the installed App, or handle login/privacy prompts. Rerun
+`ml-cli client status --output-json` after manual completion.
+
+Legacy/manual fallback only when the unified CLI is unavailable:
 
 1. Resolve the matching `darwin_arm64` or `darwin_x64` package.
 2. Validate the URL and downloaded `.dmg` or `.pkg` using
@@ -60,10 +76,11 @@ execute it.
 
 ## Verification
 
-After installation:
+After installation on macOS:
 
 ```bash
 ml-cli --version
+ml-cli client status --output-json
 ml-cli doctor --output-json
 ml-cli agent-bootstrap
 ```

@@ -14,9 +14,13 @@ x64 only.
 
 ## Installed-State Detection
 
-Check candidates in this order:
+Agents must not reproduce this scan in ad-hoc PowerShell. `ml-cli client status`
+is the authoritative implementation and returns the structured state to route.
+The following is the detection contract used for diagnosis:
 
-1. HKCU/HKLM uninstall entries, including WOW6432Node, and
+1. Check candidates in this order:
+
+   HKCU/HKLM uninstall entries, including WOW6432Node, and
    `App Paths\MoreLogin.exe`.
 2. `%LOCALAPPDATA%\Programs\MoreLogin`, `%PROGRAMFILES%\MoreLogin`, and
    `%PROGRAMFILES(X86)%\MoreLogin`.
@@ -33,10 +37,16 @@ or explain `nextAction: "update_in_client"` when an update is available.
 
 ## Unified CLI Workflow
 
-Run:
+Run the read-only status check first:
 
 ```powershell
 ml-cli client status --output-json
+```
+
+Run the installer command only after the status response is parsed as
+`not_installed` and installation has been requested:
+
+```powershell
 ml-cli client install --interactive --output-json
 ```
 
@@ -52,6 +62,10 @@ Parse the single JSON object:
 | `user_action_required` / `double_click_installer` | Try one approved outside-sandbox run, otherwise report `installerPath` for manual double-click. |
 | `unsupported` | Stop and report the unsupported OS/architecture. |
 | `error` / `retry` | Show `reason`; retry only after correcting that condition. |
+
+An invalid JSON response, non-zero exit code, timeout, or unknown status is also a
+failed check. It must not be converted into `not_installed`, and it must not trigger
+an installer launch.
 
 When `installerVerified` is true, report `signatureStatus` and `publisher`.
 `launchRequested` means Windows accepted the request; it does not prove UAC approval,

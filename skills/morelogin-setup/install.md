@@ -13,35 +13,46 @@ MoreLogin Client is installed.
   - [CLI Update](#cli-update)
   - [Fallback Downloads](#fallback-downloads)
   - [Verification](#verification)
+  - [Guide freshness](#guide-freshness)
   - [Safety Boundaries](#safety-boundaries)
   - [Detailed References](#detailed-references)
 
 ## Fast Path
 
-Detect OS and CPU architecture, then run the matching official bootstrap.
+Detect OS and CPU architecture, then choose the bootstrap that matches the
+execution context.
 
-Windows x64 PowerShell:
+For an AI-agent or automated run, use the CLI-only bootstrap first:
+
+```powershell
+$env:MORELOGIN_SKIP_CLIENT="1"
+irm https://releases.morelogin.com/client/prod/install_1.2.ps1 | iex
+```
+
+The full bootstrap below is an interactive convenience path. It may download and
+launch the Client installer, so use it only when the user explicitly requested a
+one-shot interactive install:
 
 ```powershell
 irm https://releases.morelogin.com/client/prod/install_1.2.ps1 | iex
 ```
 
-macOS or Linux:
+macOS or Linux CLI-only bootstrap:
 
 ```bash
-curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash
+curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | MORELOGIN_SKIP_CLIENT=1 bash
 ```
+
+For macOS, use `ml-cli client status --output-json` after the CLI is available.
+Use `ml-cli client install --interactive --output-json` only after a parsed
+`not_installed` result and an explicit installation request. Linux Client
+installation remains outside the unified Client workflow; follow the Linux
+fallback reference and keep system-package installation manual.
 
 Run the command with a long timeout and continue polling while files download. If
 the AI host blocks network, filesystem, localhost, or GUI access, request the
 matching host permission and retry the same command. Do not silently switch tools or
 restart the flow repeatedly.
-
-For CLI-only installation or automated bootstrap testing:
-
-```powershell
-$env:MORELOGIN_SKIP_CLIENT="1"; irm https://releases.morelogin.com/client/prod/install_1.2.ps1 | iex
-```
 
 ```bash
 curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | MORELOGIN_SKIP_CLIENT=1 bash
@@ -53,20 +64,22 @@ curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | MORELOGIN
 2. Check `ml-cli --version`.
 3. If the CLI exists, preview latest with `ml-cli self-update --dry-run`; update only
    when latest is newer.
-4. Check MoreLogin Client independently.
-5. On Windows x64, use:
+4. If the CLI is missing, install only the CLI, then check the Client independently.
+5. On Windows x64 or macOS Intel/Apple Silicon, run:
 
-   ```powershell
+   ```bash
    ml-cli client status --output-json
-   ml-cli client install --interactive --output-json
    ```
 
-6. If Client is installed, do not download or launch an external updater. Tell the
+6. If the response is `installed`, do not download or launch an external updater. Tell the
    user to update inside MoreLogin when needed.
-7. If Client is missing, download or reuse only a fully validated current installer.
-8. Open or reveal the installer, then stop at UAC, Gatekeeper, sudo, EULA, login, or
+7. If and only if the response is `not_installed`, and installation was requested,
+   run `ml-cli client install --interactive --output-json`.
+8. If the response is `error`, unknown, invalid JSON, or the command fails, stop and
+   diagnose. Never treat a failed check as `not_installed`.
+9. Open or reveal the installer, then stop at UAC, Gatekeeper, sudo, EULA, login, or
    any other user/security confirmation.
-9. After the user reports installation complete, run the verification commands.
+10. After the user reports installation complete, run the verification commands.
 
 Read the matching platform reference before step 4:
 
@@ -143,6 +156,15 @@ Do not report setup complete until both are true:
 
 If `doctor` reports `EPERM`, connection refused, or timeout on `127.0.0.1`, request
 the AI host's localhost/outside-sandbox permission and retry the same check once.
+
+## Guide freshness
+
+This repository is a versioned snapshot of the public guide. When a task explicitly
+references the GitHub `main` guide, compare the local commit with
+`git ls-remote origin refs/heads/main` before treating local instructions as latest.
+If the remote cannot be reached or the commits differ, report that limitation and do
+not silently present the local snapshot as the current official guide. Do not
+overwrite a dirty worktree automatically.
 
 ## Safety Boundaries
 

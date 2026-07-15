@@ -573,6 +573,46 @@ function Save-MoreLoginClientInstaller {
   Start-MoreLoginClientInstaller -Path $ClientPath
 }
 
+function Get-ClientStatusFromCli {
+  param([Parameter(Mandatory = $true)][string]$CliPath)
+
+  $RawOutput = (& $CliPath client status --output-json 2>&1 | Out-String).Trim()
+  $ExitCode = $LASTEXITCODE
+  if ($ExitCode -ne 0) {
+    throw "MoreLogin Client status check failed with exit code $ExitCode. Raw response: $RawOutput"
+  }
+  try {
+    $Status = $RawOutput | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw "MoreLogin Client status check returned invalid JSON. Raw response: $RawOutput"
+  }
+  if (-not $Status.status) {
+    throw "MoreLogin Client status check returned no status. Raw response: $RawOutput"
+  }
+  return $Status
+}
+
+function Request-ClientInstallFromCli {
+  param([Parameter(Mandatory = $true)][string]$CliPath)
+
+  $RawOutput = (& $CliPath client install --interactive --output-json 2>&1 | Out-String).Trim()
+  $ExitCode = $LASTEXITCODE
+  Write-Host "MoreLogin Client install response:"
+  Write-Host $RawOutput
+  if ($ExitCode -ne 0) {
+    throw "MoreLogin Client install failed with exit code $ExitCode. Raw response: $RawOutput"
+  }
+  try {
+    $Result = $RawOutput | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw "MoreLogin Client install returned invalid JSON. Raw response: $RawOutput"
+  }
+  if ($Result.status -eq "error" -or $Result.nextAction -eq "retry") {
+    throw "MoreLogin Client install requires correction before retrying. Raw response: $RawOutput"
+  }
+  return $Result
+}
+
 Assert-TrustedApiUrl
 $Identify = Get-PlatformIdentify
 $LatestCliDownloadUrl = Get-ReleaseResponse -Identify $Identify
@@ -632,9 +672,19 @@ if (-not $CliReady) {
   & $BinPath --version
 }
 
+$ActiveCliPath = if ($ExistingCliPath -and $CliReady) { $ExistingCliPath } else { $BinPath }
+
 if ($SkipClient) {
   Write-Host ""
   Write-Host "MoreLogin Client check was skipped because MORELOGIN_SKIP_CLIENT is enabled."
 } else {
-  Save-MoreLoginClientInstaller
+  $ClientStatus = Get-ClientStatusFromCli -CliPath $ActiveCliPath
+  Write-Host "MoreLogin Client status: $($ClientStatus.status)"
+  if ($ClientStatus.status -eq "installed") {
+    Write-Host "MoreLogin Client is already installed. Skipping external installer work."
+  } elseif ($ClientStatus.status -eq "not_installed") {
+    Request-ClientInstallFromCli -CliPath $ActiveCliPath | Out-Null
+  } else {
+    throw "MoreLogin Client status is not safe to continue: $($ClientStatus | ConvertTo-Json -Depth 10 -Compress)"
+  }
 }

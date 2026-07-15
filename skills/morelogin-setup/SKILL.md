@@ -34,12 +34,24 @@ scripts already provide the operation.
 
 ## Windows Client Workflow
 
-On Windows x64, prefer the unified commands:
+On Windows x64, treat `client status` as the authoritative, read-only check.
+Do not run the status and install commands unconditionally as one sequence:
 
 ```powershell
 ml-cli client status --output-json
+```
+
+Only when that response has `status: "not_installed"` and the user has requested
+installation may the agent run:
+
+```powershell
 ml-cli client install --interactive --output-json
 ```
+
+Treat `error`, an unknown status, invalid JSON, a timeout, or a non-zero exit code
+as a failed check, not as evidence that the Client is missing. A failed check must
+stop the flow before any installer download or launch. If the CLI is missing, use
+the CLI-only bootstrap (`MORELOGIN_SKIP_CLIENT=1`) first, then run `client status`.
 
 Do not reproduce their installed-state detection, download, version, architecture,
 Authenticode, publisher, or launch checks in agent-generated PowerShell. Read
