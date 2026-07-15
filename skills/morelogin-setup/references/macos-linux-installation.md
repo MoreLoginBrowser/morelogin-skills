@@ -31,9 +31,17 @@ For macOS, the CLI selects the native architecture and prepares a fresh DMG. A
 missing; stop without downloading or opening a DMG.
 
 After `user_action_required` or `launch_requested`, complete the installer and
-Gatekeeper prompts manually. The CLI does not accept licenses, remove quarantine,
+Gatekeeper prompts manually. `interactiveDesktopAvailable` is advisory in an AI
+host: even when it is false, the CLI attempts `/usr/bin/open`. If no window appears
+or the command reports an open failure, use the returned verified `installerPath`
+and double-click it in Finder. The CLI does not accept licenses, remove quarantine,
 copy the App, launch the installed App, or handle login/privacy prompts. Rerun
 `ml-cli client status --output-json` after manual completion.
+
+`--output-json` must print one JSON object on a successful command. If a legacy
+binary or AI-host wrapper exits successfully with empty stdout, rerun
+`ml-cli client install --output-json` without `--interactive`, then open the exact
+returned `installerPath`; do not infer that the installer opened.
 
 Legacy/manual fallback only when the unified CLI is unavailable:
 

@@ -52,6 +52,10 @@ Treat `error`, an unknown status, invalid JSON, a timeout, or a non-zero exit co
 as a failed check, not as evidence that the Client is missing. A failed check must
 stop the flow before any installer download or launch. If the CLI is missing, use
 the CLI-only bootstrap (`MORELOGIN_SKIP_CLIENT=1`) first, then run `client status`.
+For macOS interactive installation, `interactiveDesktopAvailable` is advisory; the
+CLI must still attempt `/usr/bin/open`, and a missing/empty JSON response is not
+proof that the installer opened. Use the returned `installerPath` manually when
+the window does not appear.
 
 Do not reproduce their installed-state detection, download, version, architecture,
 Authenticode, publisher, or launch checks in agent-generated PowerShell. Read
