@@ -16,8 +16,15 @@ The `ml-cli` implementation can remain closed source. This repository only descr
 ```text
 skills/
   morelogin-setup/
-    SKILL.md                     Setup and agent usage rules
-    install.md                   Website copy target and setup guide
+    SKILL.md                     Concise setup and routing contract
+    install.md                   Stable public setup entry point
+    agents/openai.yaml           Codex UI and invocation metadata
+    references/                  Task-specific detailed guidance
+      release-security.md       URL, artifact, signer, and reuse rules
+      windows-installation.md   Windows Client and UAC workflow
+      macos-linux-installation.md
+      operations.md             Selection, timing, and mutation rules
+    scripts/                     Deterministic bootstrap installers
   amazon-keyword-search/         Amazon.com keyword result research
   amazon-product-detail/         Amazon.com product detail inspection
   tiktok-product-search/         TikTok Shop product search
@@ -92,4 +99,5 @@ Before publishing the install commands on the website:
 - Verify `curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash` on macOS and Ubuntu.
 - Verify `irm https://releases.morelogin.com/client/prod/install_1.1.ps1 | iex` on Windows PowerShell.
 - Verify the published scripts from their release URLs before each script release.
+- When `skills/morelogin-setup/scripts/install.ps1` changes, publish it under a new versioned URL before updating the Windows command above and in `install.md`; repository changes alone do not update the hosted bootstrap script.
 - Keep MoreLogin Client updates inside the Client. The bootstrap scripts install or update `ml-cli`, skip an already installed Client, and download the Client installer only when the Client is missing. Use `MORELOGIN_SKIP_CLIENT=1` only for CLI-only installation or testing.

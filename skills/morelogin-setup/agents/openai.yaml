@@ -1,0 +1,7 @@
+interface:
+  display_name: "MoreLogin Setup"
+  short_description: "Install, verify, and safely operate MoreLogin"
+  default_prompt: "Use $morelogin-setup to install or verify MoreLogin and route the requested ml-cli operation safely."
+
+policy:
+  allow_implicit_invocation: true

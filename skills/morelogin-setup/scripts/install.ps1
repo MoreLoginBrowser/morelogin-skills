@@ -4,6 +4,7 @@ $ApiBase = "https://cb-gateway.morelogin.com/app/ver/public/latest"
 $ApiHost = "cb-gateway.morelogin.com"
 $ReleaseHost = "releases.morelogin.com"
 $InstallHost = "get.morelogin.com"
+$OfficialPublisher = "EASYANT PTE. LTD."
 $InstallDir = if ($env:MORELOGIN_CLI_INSTALL_DIR) { $env:MORELOGIN_CLI_INSTALL_DIR } else { Join-Path $env:USERPROFILE ".morelogin\bin" }
 $BinPath = Join-Path $InstallDir "ml-cli.exe"
 $SkipClient = $env:MORELOGIN_SKIP_CLIENT -in @("1", "true", "TRUE", "True")
@@ -176,21 +177,182 @@ function Get-InstalledCliVersion {
   return $null
 }
 
-function Test-MoreLoginClientInstalled {
-  $paths = @(
-    (Join-Path $env:LOCALAPPDATA "Programs\MoreLogin"),
-    (Join-Path $env:ProgramFiles "MoreLogin")
-  )
-  if (${env:ProgramFiles(x86)}) {
-    $paths += (Join-Path ${env:ProgramFiles(x86)} "MoreLogin")
+function Test-OfficialMoreLoginPublisher {
+  param([Parameter(Mandatory = $true)]$Signature)
+
+  if ($Signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or
+      -not $Signature.SignerCertificate) {
+    return $false
   }
-  foreach ($path in $paths) {
-    if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Container)) {
+
+  $ExpectedOrganization = "O=$OfficialPublisher"
+  $ExpectedCommonName = "CN=$OfficialPublisher"
+  $MatchedComponent = $Signature.SignerCertificate.Subject.Split(",") |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -ieq $ExpectedCommonName -or $_ -ieq $ExpectedOrganization } |
+    Select-Object -First 1
+  return [bool]$MatchedComponent
+}
+
+function Test-VersionMatchesExpected {
+  param(
+    [AllowNull()][string]$ActualVersion,
+    [Parameter(Mandatory = $true)][Version]$ExpectedVersion
+  )
+
+  if (-not $ActualVersion -or $ActualVersion -notmatch "(?<version>\d+\.\d+\.\d+(?:\.\d+)?)") {
+    return $false
+  }
+  try {
+    $Actual = [Version]$Matches.version
+  } catch {
+    return $false
+  }
+
+  $ActualRevision = if ($Actual.Revision -lt 0) { 0 } else { $Actual.Revision }
+  $ExpectedRevision = if ($ExpectedVersion.Revision -lt 0) { 0 } else { $ExpectedVersion.Revision }
+  return $Actual.Major -eq $ExpectedVersion.Major -and
+    $Actual.Minor -eq $ExpectedVersion.Minor -and
+    $Actual.Build -eq $ExpectedVersion.Build -and
+    $ActualRevision -eq $ExpectedRevision
+}
+
+function Test-TrustedInstalledMoreLoginExecutable {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return $false
+  }
+
+  $Executable = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
+  if (-not $Executable -or $Executable.Name -ine "MoreLogin.exe") {
+    return $false
+  }
+  if (-not $Executable.VersionInfo.ProductName -or
+      $Executable.VersionInfo.ProductName.IndexOf("MoreLogin", [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+    return $false
+  }
+
+  try {
+    $Signature = Get-AuthenticodeSignature -LiteralPath $Executable.FullName -ErrorAction Stop
+  } catch {
+    return $false
+  }
+  return Test-OfficialMoreLoginPublisher -Signature $Signature
+}
+
+function Get-MoreLoginClientRegistryCandidates {
+  $Candidates = New-Object System.Collections.Generic.List[string]
+  $UninstallPaths = @(
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+  )
+
+  Get-ItemProperty $UninstallPaths -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.DisplayName -like "*MoreLogin*" -or
+      $_.InstallLocation -like "*MoreLogin*" -or
+      $_.DisplayIcon -like "*MoreLogin*"
+    } |
+    ForEach-Object {
+      if ($_.InstallLocation) {
+        $Candidates.Add((Join-Path ([string]$_.InstallLocation) "MoreLogin.exe"))
+      }
+      if ($_.DisplayIcon) {
+        $DisplayIconPath = ([string]$_.DisplayIcon).Split(",")[0].Trim().Trim('"')
+        if ($DisplayIconPath) {
+          $Candidates.Add($DisplayIconPath)
+        }
+      }
+    }
+
+  $AppPaths = @(
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\MoreLogin.exe",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\MoreLogin.exe"
+  )
+  foreach ($AppPath in $AppPaths) {
+    try {
+      $ExecutablePath = (Get-Item -LiteralPath $AppPath -ErrorAction Stop).GetValue("")
+      if ($ExecutablePath) {
+        $Candidates.Add([string]$ExecutablePath)
+      }
+    } catch {
       continue
     }
-    $Executable = Get-ChildItem -LiteralPath $path -Filter "MoreLogin.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($Executable) {
-      Write-Host "Found MoreLogin Client executable: $($Executable.FullName)"
+  }
+
+  return @($Candidates | Select-Object -Unique)
+}
+
+function Get-MoreLoginClientFileSystemCandidates {
+  $InstallRoots = @()
+  if ($env:LOCALAPPDATA) {
+    $InstallRoots += (Join-Path $env:LOCALAPPDATA "Programs\MoreLogin")
+  }
+  if ($env:ProgramFiles) {
+    $InstallRoots += (Join-Path $env:ProgramFiles "MoreLogin")
+  }
+  if (${env:ProgramFiles(x86)}) {
+    $InstallRoots += (Join-Path ${env:ProgramFiles(x86)} "MoreLogin")
+  }
+
+  foreach ($InstallRoot in $InstallRoots) {
+    if (Test-Path -LiteralPath $InstallRoot -PathType Container) {
+      Get-ChildItem -LiteralPath $InstallRoot -Filter "MoreLogin.exe" -File -Recurse -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.FullName }
+    }
+  }
+}
+
+function Get-MoreLoginClientShortcutCandidates {
+  $ShortcutRoots = @()
+  if ($env:APPDATA) {
+    $ShortcutRoots += (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs")
+  }
+  if ($env:ProgramData) {
+    $ShortcutRoots += (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs")
+  }
+  if ($env:USERPROFILE) {
+    $ShortcutRoots += (Join-Path $env:USERPROFILE "Desktop")
+  }
+  if ($env:PUBLIC) {
+    $ShortcutRoots += (Join-Path $env:PUBLIC "Desktop")
+  }
+
+  try {
+    $Shell = New-Object -ComObject WScript.Shell
+  } catch {
+    return
+  }
+  foreach ($ShortcutRoot in $ShortcutRoots) {
+    if (-not (Test-Path -LiteralPath $ShortcutRoot -PathType Container)) {
+      continue
+    }
+    Get-ChildItem -LiteralPath $ShortcutRoot -Filter "MoreLogin.lnk" -File -Recurse -ErrorAction SilentlyContinue |
+      ForEach-Object {
+        try {
+          $TargetPath = $Shell.CreateShortcut($_.FullName).TargetPath
+          if ($TargetPath) {
+            $TargetPath
+          }
+        } catch {
+          continue
+        }
+      }
+  }
+}
+
+function Test-MoreLoginClientInstalled {
+  $Candidates = @(
+    @(Get-MoreLoginClientRegistryCandidates)
+    @(Get-MoreLoginClientFileSystemCandidates)
+    @(Get-MoreLoginClientShortcutCandidates)
+  ) | Select-Object -Unique
+
+  foreach ($Candidate in $Candidates) {
+    if ($Candidate -and (Test-TrustedInstalledMoreLoginExecutable -Path $Candidate)) {
+      Write-Host "Found trusted MoreLogin Client executable: $Candidate"
       return $true
     }
   }
@@ -198,7 +360,10 @@ function Test-MoreLoginClientInstalled {
 }
 
 function Test-ReusableMoreLoginClientInstaller {
-  param([Parameter(Mandatory = $true)][string]$Path)
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][Version]$ExpectedVersion
+  )
 
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     return $false
@@ -214,7 +379,7 @@ function Test-ReusableMoreLoginClientInstaller {
   } catch {
     return $false
   }
-  if ($Signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+  if (-not (Test-OfficialMoreLoginPublisher -Signature $Signature)) {
     return $false
   }
 
@@ -224,7 +389,12 @@ function Test-ReusableMoreLoginClientInstaller {
     $VersionInfo.ProductName,
     $VersionInfo.FileDescription
   ) -join " "
-  return $ProductMetadata.IndexOf("MoreLogin", [StringComparison]::OrdinalIgnoreCase) -ge 0
+  if ($ProductMetadata.IndexOf("MoreLogin", [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+    return $false
+  }
+
+  return (Test-VersionMatchesExpected -ActualVersion $VersionInfo.ProductVersion -ExpectedVersion $ExpectedVersion) -or
+    (Test-VersionMatchesExpected -ActualVersion $VersionInfo.FileVersion -ExpectedVersion $ExpectedVersion)
 }
 
 function Move-AsideInvalidFile {
@@ -324,47 +494,39 @@ function Show-MoreLoginInstallerInExplorer {
   }
 }
 
+function Test-ElevationCancelledByUser {
+  param([Parameter(Mandatory = $true)][System.Exception]$Exception)
+
+  return (($Exception.HResult -band 0xFFFF) -eq 1223) -or
+    ($Exception.PSObject.Properties.Name -contains "NativeErrorCode" -and $Exception.NativeErrorCode -eq 1223)
+}
+
 function Start-MoreLoginClientInstaller {
   param([Parameter(Mandatory = $true)][string]$Path)
 
-  $InstallerProcess = $null
-  $LaunchRequested = $false
-  $VisibleWindowConfirmed = $false
+  $ResolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
 
   Write-Host "Requesting Windows to launch the MoreLogin Client installer with elevation:"
-  Write-Host $Path
+  Write-Host $ResolvedPath
   try {
-    $InstallerProcess = Start-Process -FilePath $Path -Verb RunAs -PassThru -ErrorAction Stop
-    $LaunchRequested = $true
-  } catch {
-    Write-Warning "Windows did not start the installer. UAC may have been cancelled or the agent may not have access to the interactive desktop. $($_.Exception.Message)"
-  }
-
-  if ($LaunchRequested -and $InstallerProcess) {
-    Start-Sleep -Seconds 5
-    try {
-      if (-not $InstallerProcess.HasExited) {
-        $InstallerProcess.Refresh()
-        $VisibleWindowConfirmed = $InstallerProcess.MainWindowHandle -ne [IntPtr]::Zero
-      }
-    } catch {
-      Write-Warning "Could not confirm whether the installer window is visible. $($_.Exception.Message)"
-    }
-  }
-
-  if ($VisibleWindowConfirmed) {
-    Write-Host "The MoreLogin Client installer process is running with a visible window."
-    Write-Host "Confirm UAC, EULA, firewall, privacy, and installer prompts manually."
+    Start-Process -FilePath $ResolvedPath -Verb RunAs -ErrorAction Stop
+    # Do not use MainWindowHandle as the success condition. UAC can appear on the
+    # secure desktop, and bootstrap installers commonly create another process.
+    Write-Host "Windows accepted the installer launch request."
+    Write-Host "Check the taskbar and secure desktop for a UAC prompt or MoreLogin installer window."
+    Write-Host "Approve UAC, EULA, firewall, privacy, and installer prompts manually."
     return
+  } catch {
+    if (Test-ElevationCancelledByUser -Exception $_.Exception) {
+      Write-Warning "The UAC prompt was cancelled. The installer was not started."
+      return
+    }
+    Write-Warning "Windows could not launch the installer automatically. This process may not have access to the interactive desktop. $($_.Exception.Message)"
   }
 
-  if ($LaunchRequested) {
-    Write-Warning "Windows accepted the installer launch request, but a visible installer window could not be confirmed."
-  }
-  Show-MoreLoginInstallerInExplorer -Path $Path
-  Write-Host "If the installer or UAC window is already visible, do not start it again."
-  Write-Host "If no installer window appears, double-click the selected file manually:"
-  Write-Host $Path
+  Show-MoreLoginInstallerInExplorer -Path $ResolvedPath
+  Write-Host "Double-click the selected file manually:"
+  Write-Host $ResolvedPath
 }
 
 function Save-MoreLoginClientInstaller {
@@ -375,12 +537,16 @@ function Save-MoreLoginClientInstaller {
 
   $ClientIdentify = "MoreLogin_AirDrop_window_x64"
   $DownloadUrl = Get-ReleaseResponse -Identify $ClientIdentify
+  $ExpectedClientVersion = Get-VersionFromDownloadUrl -Url $DownloadUrl
+  if (-not $ExpectedClientVersion) {
+    throw "Could not determine the latest MoreLogin Client version from: $DownloadUrl"
+  }
   $DownloadDir = if ($env:MORELOGIN_DOWNLOAD_DIR) { $env:MORELOGIN_DOWNLOAD_DIR } else { Join-Path $env:USERPROFILE "Downloads" }
   New-Item -ItemType Directory -Force -Path $DownloadDir | Out-Null
   $FileName = Split-Path -Leaf ([Uri]$DownloadUrl).AbsolutePath
   $ClientPath = Join-Path $DownloadDir $FileName
 
-  $ReuseInstaller = Test-ReusableMoreLoginClientInstaller -Path $ClientPath
+  $ReuseInstaller = Test-ReusableMoreLoginClientInstaller -Path $ClientPath -ExpectedVersion $ExpectedClientVersion
   if ($ReuseInstaller) {
     Write-Host "Found the latest MoreLogin Client installer in the download directory:"
     Write-Host $ClientPath
@@ -389,7 +555,7 @@ function Save-MoreLoginClientInstaller {
     Move-AsideInvalidFile -Path $ClientPath
     $PartialPath = "$ClientPath.part"
 
-    if (Test-ReusableMoreLoginClientInstaller -Path $PartialPath) {
+    if (Test-ReusableMoreLoginClientInstaller -Path $PartialPath -ExpectedVersion $ExpectedClientVersion) {
       Write-Host "Found a complete validated partial download. Finishing it without downloading again:"
       Write-Host $PartialPath
     } else {
@@ -397,8 +563,8 @@ function Save-MoreLoginClientInstaller {
       Write-Host $DownloadUrl
       Save-WebFileWithResume -Url $DownloadUrl -Path $PartialPath
     }
-    if (-not (Test-ReusableMoreLoginClientInstaller -Path $PartialPath)) {
-      throw "Downloaded MoreLogin Client installer failed Authenticode or product validation: $PartialPath"
+    if (-not (Test-ReusableMoreLoginClientInstaller -Path $PartialPath -ExpectedVersion $ExpectedClientVersion)) {
+      throw "Downloaded MoreLogin Client installer failed version, product, Authenticode, or publisher validation: $PartialPath"
     }
     Move-Item -LiteralPath $PartialPath -Destination $ClientPath
     Write-Host "Downloaded MoreLogin Client installer to $ClientPath"
@@ -449,6 +615,9 @@ if (-not $CliReady) {
   $DownloadedCliVersion = Get-InstalledCliVersion -Path $TmpPath
   if (-not $DownloadedCliVersion) {
     throw "Downloaded ml-cli could not be executed or did not report a valid version: $TmpPath"
+  }
+  if ($LatestCliVersion -and $DownloadedCliVersion -ne $LatestCliVersion) {
+    throw "Downloaded ml-cli version $DownloadedCliVersion does not match latest API version $LatestCliVersion`: $TmpPath"
   }
   Move-Item -Force $TmpPath $BinPath
 
