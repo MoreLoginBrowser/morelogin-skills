@@ -1,0 +1,31 @@
+#!/bin/sh
+
+required_name='john1789-a11y'
+
+if command -v git >/dev/null 2>&1; then
+  git_cmd='git'
+elif [ -x /mingw64/bin/git.exe ]; then
+  git_cmd='/mingw64/bin/git.exe'
+else
+  echo 'Commit rejected: unable to locate Git for identity validation.' >&2
+  exit 1
+fi
+
+author_ident=$($git_cmd var GIT_AUTHOR_IDENT) || exit 1
+committer_ident=$($git_cmd var GIT_COMMITTER_IDENT) || exit 1
+
+case "$author_ident" in
+  "$required_name <"*) ;;
+  *)
+    echo "Commit rejected: author name must be '$required_name'." >&2
+    exit 1
+    ;;
+esac
+
+case "$committer_ident" in
+  "$required_name <"*) ;;
+  *)
+    echo "Commit rejected: committer name must be '$required_name'." >&2
+    exit 1
+    ;;
+esac

@@ -41,8 +41,7 @@ Do not run the status and install commands unconditionally as one sequence:
 ml-cli client status --output-json
 ```
 
-Only when that response has `status: "not_installed"` and the user has requested
-installation may the agent run:
+When that response has `status: "not_installed"`, immediately run:
 
 ```powershell
 ml-cli client install --interactive --output-json
@@ -51,7 +50,8 @@ ml-cli client install --interactive --output-json
 Treat `error`, an unknown status, invalid JSON, a timeout, or a non-zero exit code
 as a failed check, not as evidence that the Client is missing. A failed check must
 stop the flow before any installer download or launch. If the CLI is missing, use
-the CLI-only bootstrap (`MORELOGIN_SKIP_CLIENT=1`) first, then run `client status`.
+the platform CLI-only bootstrap first, then run `client status`. Linux may use
+the documented legacy combined bootstrap.
 For macOS interactive installation, `interactiveDesktopAvailable` is advisory; the
 CLI must still attempt `/usr/bin/open`, and a missing/empty JSON response is not
 proof that the installer opened. Use the returned `installerPath` manually when

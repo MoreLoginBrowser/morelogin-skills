@@ -1,10 +1,10 @@
 # macOS And Linux Installation
 
-Use this reference only on macOS or Linux. For an AI-agent setup, install or update
-only `ml-cli` first:
+Use this reference only on macOS or Linux. On macOS, install or update only
+`ml-cli` first with the dedicated bootstrap:
 
 ```bash
-curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | MORELOGIN_SKIP_CLIENT=1 bash
+curl -fsSL https://releases.morelogin.com/client/prod/install-cli.sh | bash
 ```
 
 ## Contents
@@ -20,7 +20,7 @@ Use `ml-cli client status --output-json` as the authoritative read-only check fo
 bundle scanning, architecture checks, signing checks, or Gatekeeper checks in
 ad-hoc shell code.
 
-If the status is `not_installed` and installation was requested, run:
+If the status is `not_installed`, immediately run:
 
 ```bash
 ml-cli client install --interactive --output-json
@@ -59,6 +59,20 @@ check the application path and run `open -a MoreLogin` only when application lau
 is within the user's request.
 
 ## Linux
+
+Linux intentionally retains the legacy combined bootstrap, which downloads the
+CLI and (when needed) the Linux Client package:
+
+```bash
+curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash
+```
+
+Ubuntu is also supported by the standalone CLI-only script when an agent only
+needs `ml-cli`:
+
+```bash
+curl -fsSL https://releases.morelogin.com/client/prod/install-cli.sh | bash
+```
 
 Check `morelogin`/`MoreLogin` on PATH, user application locations, `/opt`, and desktop
 entries under `~/.local/share/applications` or `/usr/share/applications`. Resolve a

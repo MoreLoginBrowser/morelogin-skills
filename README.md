@@ -94,10 +94,14 @@ Industry skills are responsible for:
 
 Before publishing the install commands on the website:
 
+- Publish `skills/morelogin-setup/scripts/install-cli.ps1` as
+  `https://releases.morelogin.com/client/prod/install-cli.ps1`.
+- Publish `skills/morelogin-setup/scripts/install-cli.sh` as
+  `https://releases.morelogin.com/client/prod/install-cli.sh`.
 - Use the published `https://releases.morelogin.com/client/prod/install_1.0.sh` for macOS/Linux.
-- Use the published `https://releases.morelogin.com/client/prod/install_1.1.ps1` for Windows.
+- Use the published `https://releases.morelogin.com/client/prod/install_1.2.ps1` for the legacy Windows flow.
 - Verify `curl -fsSL https://releases.morelogin.com/client/prod/install_1.0.sh | bash` on macOS and Ubuntu.
 - Verify `irm https://releases.morelogin.com/client/prod/install_1.1.ps1 | iex` on Windows PowerShell.
 - Verify the published scripts from their release URLs before each script release.
 - When `skills/morelogin-setup/scripts/install.ps1` changes, publish it under a new versioned URL before updating the Windows command above and in `install.md`; repository changes alone do not update the hosted bootstrap script.
-- Keep MoreLogin Client updates inside the Client. The bootstrap scripts install or update `ml-cli`, skip an already installed Client, and download the Client installer only when the Client is missing. Use `MORELOGIN_SKIP_CLIENT=1` only for CLI-only installation or testing.
+- Keep MoreLogin Client updates inside the Client. The CLI-only scripts install or update only `ml-cli`; use `ml-cli client status` and `ml-cli client install` for Windows/macOS Client operations. Linux keeps the legacy combined flow. `MORELOGIN_SKIP_CLIENT` remains an internal compatibility switch for the old bootstrap.

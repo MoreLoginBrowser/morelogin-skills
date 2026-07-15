@@ -44,7 +44,7 @@ ml-cli client status --output-json
 ```
 
 Run the installer command only after the status response is parsed as
-`not_installed` and installation has been requested:
+`not_installed`:
 
 ```powershell
 ml-cli client install --interactive --output-json
@@ -56,7 +56,7 @@ Parse the single JSON object:
 |---|---|
 | `installed` / `none` | Stop external installation; continue connectivity verification. |
 | `installed` / `update_in_client` | Tell the user to update inside MoreLogin. |
-| `not_installed` / `install` | Continue only when installation was requested. |
+| `not_installed` / `install` | Immediately run the interactive CLI install. |
 | `installer_ready` / `install` | Installer is verified but not launched; request interactive execution if desired. |
 | `launch_requested` / `approve_uac` | Tell the user to approve UAC and complete the wizard; keep the task open. |
 | `user_action_required` / `double_click_installer` | Try one approved outside-sandbox run, otherwise report `installerPath` for manual double-click. |
