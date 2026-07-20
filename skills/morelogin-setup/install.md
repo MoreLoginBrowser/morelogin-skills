@@ -10,7 +10,6 @@ MoreLogin Client is installed.
   - [Contents](#contents)
   - [Fast Path](#fast-path)
   - [Decision Flow](#decision-flow)
-  - [Fallback Downloads](#fallback-downloads)
   - [Verification](#verification)
   - [Guide freshness](#guide-freshness)
   - [Safety Boundaries](#safety-boundaries)
@@ -70,29 +69,6 @@ Read the matching platform reference before step 4:
 
 - [Windows](./references/windows-installation.md)
 - [macOS and Linux](./references/macos-linux-installation.md)
-
-## Fallback Downloads
-
-Use a fallback only when the bootstrap or unified CLI flow is unavailable after the
-required host permission has been requested.
-
-Windows x64 latest shortcuts:
-
-- Client: `https://cb-gateway.morelogin.com/app/ver/public/latest/redirect?identify=MoreLogin_AirDrop_window_x64`
-- CLI: `https://cb-gateway.morelogin.com/app/ver/public/latest/redirect?identify=MoreLogin_AirDrop_window_x64_cli`
-
-These two URLs are explicitly approved redirect entry points. Follow at most one
-redirect and validate its `Location` before downloading: require HTTPS, an allowlisted
-MoreLogin host, the expected platform and architecture, and the expected artifact
-type. Do not treat this exception as permission to follow redirects from the JSON
-release API or from an artifact URL.
-
-Save the Windows CLI as `%USERPROFILE%\.morelogin\bin\ml-cli.exe`. Save Client
-installers in `%USERPROFILE%\Downloads`. Do not modify machine PATH or install into
-system directories without explicit approval.
-
-For all URL, artifact, reuse, and signer requirements, read
-[release and artifact security](./references/release-security.md).
 
 ## Verification
 
